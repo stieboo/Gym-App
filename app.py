@@ -21,6 +21,16 @@ def bereken_target_gewicht(huidige_e1rm, target_reps, rpe_target=8):
 # --- PAGINA INSTELLINGEN ---
 st.set_page_config(page_title="Gym AI", page_icon="🦍", layout="centered")
 
+# --- HIDE STREAMLIT BRANDING ---
+hide_st_style = """
+            <style>
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            header {visibility: hidden;}
+            </style>
+            """
+st.markdown(hide_st_style, unsafe_allow_html=True)
+
 # --- SECURITY: INLOGSCHERM ---
 def check_password():
     """Geeft True terug als de gebruiker het juiste wachtwoord heeft ingevuld."""
