@@ -24,47 +24,26 @@ st.set_page_config(page_title="Gym AI", page_icon="🦍", layout="centered")
 # --- HIDE STREAMLIT BRANDING ---
 hide_st_style = """
             <style>
-            #MainMenu {visibility: hidden;}
+            [data-testid="stToolbar"] {visibility: hidden;}
             footer {visibility: hidden;}
             header {visibility: hidden;}
             </style>
             """
 st.markdown(hide_st_style, unsafe_allow_html=True)
 
-# --- SECURITY: INLOGSCHERM ---
-def check_password():
-    """Geeft True terug als de gebruiker het juiste wachtwoord heeft ingevuld."""
-    # We slaan een sessie-wachtwoord op zodat je niet bij elke klik hoeft in te loggen
-    if "password_correct" not in st.session_state:
-        st.session_state["password_correct"] = False
-
-    if not st.session_state["password_correct"]:
-        st.markdown("### 🔒 Log in om de Gym AI te gebruiken")
-        wachtwoord = st.text_input("Wachtwoord", type="password")
-        if st.button("Log In"):
-            # HET WACHTWOORD IS HIER: 'gorilla2026' (Verander dit naar wat je wilt!)
-            if wachtwoord == "gorilla2026": 
-                st.session_state["password_correct"] = True
-                st.rerun()
-            else:
-                st.error("Incorrect wachtwoord.")
-        return False
-    return True
-
-# Stop het script als het wachtwoord nog niet klopt!
-if not check_password():
-    st.stop()
-
 # --- DATABASE CONNECTIE FUNCTIES ---
 def connect_to_sheet(sheet_naam):
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     
     # Check of we in de Cloud draaien (met secrets) of Lokaal (met json bestand)
-    if "gcp_service_account" in st.secrets:
+    import os
+    if os.path.exists("credentials.json"):
+        # Lokaal (Jouw laptop)
+        creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+    else:
+        # In de Cloud (Streamlit Server)
         creds_dict = dict(st.secrets["gcp_service_account"])
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-    else:
-        creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
         
     client = gspread.authorize(creds)
     return client.open("Gym Database - Python Backend").worksheet(sheet_naam)
@@ -139,70 +118,49 @@ with tab1:
         df_log = get_log_data()
         oefeningen_lijst = df_log['Oefening'].dropna().unique()
         
-        gekozen_oefening = st.selectbox("Kies je Oefening:", oefeningen_lijst)
+        # -- LIVE VANDAAG TRACKER --
+        vandaag_datum = datetime.now().strftime('%d-%m-%Y')
+        df_vandaag = df_log[df_log['Datum'].dt.strftime('%d-%m-%Y') == vandaag_datum]
+        sets_vandaag = len(df_vandaag)
+        volume_vandaag = df_vandaag['Volume'].sum()
+        
+        if sets_vandaag > 0:
+            st.success(f"🔥 **Sessie Vandaag:** {sets_vandaag} sets | 🏋️‍♂️ {volume_vandaag:,.0f} kg")
+        
+        st.divider()
+        
+        # -- OEFENING SELECTIE (SEARCHABLE) --
+        st.subheader("Wat ga je doen?")
+        gekozen_oefening = st.selectbox("Kies je Oefening (Typ om te zoeken):", oefeningen_lijst, index=None, placeholder="Typ een oefening...")
+        
+        # -- GEAVANCEERDE OPTIES (DELOAD) --
+        is_deload = False
+        with st.expander("⚙️ Geavanceerde Opties"):
+            is_deload = st.toggle("🧘‍♂️ Deload Modus (Lichter trainen voor herstel)")
         
         if gekozen_oefening:
             df_oefening = df_log[df_log['Oefening'] == gekozen_oefening]
-            # Zoek All-Time PR
             pr = df_oefening['e1RM'].max()
             
-            # Zoek het e1RM van de LAATSTE keer (voor de AI Coach)
-            # We pakken de meest recente datum waarop je deze oefening deed en pakken daar het hoogste e1RM van
+            # -- AI COACH (TARGET GENERATOR) --
             laatste_datum = df_oefening['Datum'].max()
             vorig_e1rm = df_oefening[df_oefening['Datum'].dt.date == laatste_datum.date()]['e1RM'].max()
 
-            # -- AI COACH (TARGET GENERATOR) --
             if pd.notna(vorig_e1rm) and vorig_e1rm > 0:
-                target_8 = bereken_target_gewicht(vorig_e1rm, target_reps=8, rpe_target=8.5)
-                target_10 = bereken_target_gewicht(vorig_e1rm, target_reps=10, rpe_target=8.5)
-                
-                st.success(f"""
-                🎯 **Jouw Overload Doel (RPE 8.5):**  
-                Pak **{target_8} kg** voor 8 reps  
-                *óf* **{target_10} kg** voor 10 reps.
-                """)
+                if is_deload:
+                    # Deload: 80% van vorig e1RM, mikken op RPE 7
+                    target_8 = bereken_target_gewicht(vorig_e1rm * 0.80, target_reps=8, rpe_target=7)
+                    target_10 = bereken_target_gewicht(vorig_e1rm * 0.80, target_reps=10, rpe_target=7)
+                    st.info(f"🧘‍♂️ **Deload Doel (RPE 7):**\nPak **{target_8} kg** voor 8 reps\n*óf* **{target_10} kg** voor 10 reps.")
+                else:
+                    # Normale Overload: RPE 8.5
+                    target_8 = bereken_target_gewicht(vorig_e1rm, target_reps=8, rpe_target=8.5)
+                    target_10 = bereken_target_gewicht(vorig_e1rm, target_reps=10, rpe_target=8.5)
+                    st.success(f"🎯 **Jouw Overload Doel (RPE 8.5):**\nPak **{target_8} kg** voor 8 reps\n*óf* **{target_10} kg** voor 10 reps.")
             
             st.info(f"🏆 **All-Time PR (e1RM):** {pr:.1f} kg")
             
-            # -- VORIGE KEER (HEATMAP) --
-            st.markdown("### 🕒 Vorige Sessie")
-            display_df = df_oefening[['Datum', 'Gewicht', 'Reps', 'RPE', 'Notities']].head(5)
-            display_df['Datum'] = display_df['Datum'].dt.strftime('%d-%m-%y')
-            
-            # Pas de kleuren toe op de RPE kolom
-            styled_df = display_df.style.map(color_rpe, subset=['RPE'])
-            st.dataframe(styled_df, hide_index=True, use_container_width=True)
-            
-            # -- KRACHT PROGRESSIE (TRENDLIJN) --
-            st.markdown("### 📈 Kracht Progressie (e1RM)")
-            
-            # Maak een pure datum kolom (zonder tijd) voor de berekening
-            df_oefening['Datum_Puur'] = df_oefening['Datum'].dt.date
-            kracht_df = df_oefening[df_oefening['e1RM'] > 0].groupby('Datum_Puur')['e1RM'].max().reset_index()
-            kracht_df = kracht_df.sort_values(by='Datum_Puur', ascending=True)
-            
-            if not kracht_df.empty and len(kracht_df) > 1:
-                fig = px.line(kracht_df, x='Datum_Puur', y='e1RM', markers=True)
-                fig.update_traces(line_shape='spline', line=dict(color='#00d26a', width=3), marker=dict(size=8))
-                
-                fig.update_layout(
-                    xaxis_title=None, 
-                    yaxis_title="kg",
-                    margin=dict(l=0, r=0, t=10, b=0),
-                    height=250,
-                    dragmode=False,
-                    hovermode="x"
-                )
-                # Forceer de weergave naar Dag-Maand
-                fig.update_xaxes(tickformat="%d-%m")
-                
-                st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-            else:
-                st.caption("Nog niet genoeg werksets gelogd voor een trendlijn.")
-            
-            st.divider()
-            
-            # -- LOG NIEUWE SET --
+            # -- LOG NIEUWE SET (BOVENAAN) --
             st.markdown("### 📝 Log Nieuwe Set")
             with st.form("log_form", clear_on_submit=True):
                 col1, col2 = st.columns(2)
@@ -216,24 +174,68 @@ with tab1:
                 submit_button = st.form_submit_button("💾 Sla Set Op", use_container_width=True)
                 
                 if submit_button:
-                    # RPE & PR Berekening
-                    if input_rpe != "-":
+                    # Voeg automatische Deload tag toe aan notities
+                    final_notes = input_notities
+                    if is_deload:
+                        final_notes = "[DELOAD] " + input_notities
+                        
+                    # RPE & PR Berekening (Geen PR's vieren in een deload!)
+                    if input_rpe != "-" and not is_deload: 
                         rpe_float = float(input_rpe)
                         if rpe_float >= 8:
                             nieuwe_e1rm = input_gewicht * (1 + (input_reps + (10 - rpe_float)) / 30)
-                            # pr kan NaN zijn (geen data), dus we checken of de nieuwe hoger is én of pr bestaat
                             if pd.notna(pr) and pr > 0 and nieuwe_e1rm > pr:
-                                st.session_state.pr_feestje = True # ACTIVEER BALLONNEN!
+                                st.session_state.pr_feestje = True
                     
                     nu = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
                     rpe_str = input_rpe if input_rpe != "-" else ""
                     
-                    nieuwe_rij = [nu, gekozen_oefening, input_gewicht, input_reps, rpe_str, input_notities]
+                    nieuwe_rij = [nu, gekozen_oefening, input_gewicht, input_reps, rpe_str, final_notes]
                     sheet = connect_to_sheet("LOG_DATA")
                     sheet.append_row(nieuwe_rij, value_input_option="USER_ENTERED")
                     
                     st.cache_data.clear()
                     st.rerun()
+
+            # -- UNDO KNOP --
+            if not df_log.empty:
+                laatste_oefening = df_log.iloc[0]['Oefening']
+                laatste_gewicht = df_log.iloc[0]['Gewicht']
+                laatste_reps = df_log.iloc[0]['Reps']
+                with st.expander("⚠️ Oeps, foutje gemaakt?"):
+                    st.write(f"Laatst gelogd: **{laatste_oefening}** ({laatste_gewicht}kg x {laatste_reps})")
+                    if st.button("🗑️ Verwijder laatste set uit database", type="primary"):
+                        sheet = connect_to_sheet("LOG_DATA")
+                        aantal_rijen = len(sheet.get_all_values())
+                        if aantal_rijen > 1:
+                            sheet.delete_rows(aantal_rijen)
+                            st.cache_data.clear()
+                            st.toast("Set succesvol verwijderd!", icon="🗑️")
+                            st.rerun()
+            
+            st.divider()
+
+            # -- VORIGE KEER (HEATMAP) (MAX 5 SETS) --
+            st.markdown("### 🕒 Laatste 5 Sets")
+            display_df = df_oefening[['Datum', 'Gewicht', 'Reps', 'RPE', 'Notities']].head(5)
+            display_df['Datum'] = display_df['Datum'].dt.strftime('%d-%m-%y')
+            styled_df = display_df.style.map(color_rpe, subset=['RPE'])
+            st.dataframe(styled_df, hide_index=True, use_container_width=True)
+            
+            # -- KRACHT PROGRESSIE (TRENDLIJN) --
+            st.markdown("### 📈 Kracht Progressie (e1RM)")
+            df_oefening['Datum_Puur'] = df_oefening['Datum'].dt.date
+            kracht_df = df_oefening[df_oefening['e1RM'] > 0].groupby('Datum_Puur')['e1RM'].max().reset_index()
+            kracht_df = kracht_df.sort_values(by='Datum_Puur', ascending=True)
+            
+            if not kracht_df.empty and len(kracht_df) > 1:
+                fig = px.line(kracht_df, x='Datum_Puur', y='e1RM', markers=True)
+                fig.update_traces(line_shape='spline', line=dict(color='#00d26a', width=3), marker=dict(size=8))
+                fig.update_layout(xaxis_title=None, yaxis_title="kg", margin=dict(l=0, r=0, t=10, b=0), height=250, dragmode=False, hovermode="x")
+                fig.update_xaxes(tickformat="%d-%m")
+                st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+            else:
+                st.caption("Nog niet genoeg werksets gelogd voor een trendlijn.")
 
     except Exception as e:
         st.error(f"Fout in Training Tab: {e}")
@@ -244,20 +246,6 @@ with tab1:
 with tab2:
     try:
         df_metrics = get_metrics_data()
-        
-        # Laatste Gemiddeldes tonen
-        if not df_metrics.empty:
-            laatste_gew = df_metrics['7D Gem. Gewicht'].iloc[0]
-            laatste_vet = df_metrics['7D Gem. Vet %'].iloc[0]
-            st.success(f"⚖️ **Huidig 7-Dagen Gemiddelde:** {laatste_gew:.1f} kg | {laatste_vet:.1f}% Vet")
-            
-            # Korte Historie
-            st.markdown("### 📊 Historie")
-            toon_metrics = df_metrics[['Datum', 'Gewicht (kg)', 'Vet %', '7D Gem. Gewicht']].head(5)
-            toon_metrics['Datum'] = toon_metrics['Datum'].dt.strftime('%d-%m-%y')
-            st.dataframe(toon_metrics, hide_index=True, use_container_width=True)
-            
-        st.divider()
         
         st.markdown("### 📝 Log Nieuwe Weging")
         with st.form("metrics_form", clear_on_submit=True):
@@ -279,7 +267,7 @@ with tab2:
                 # Datum formatten
                 datum_str = m_datum.strftime("%d-%m-%Y")
                 
-                # We sturen de platte data naar de sheet (Google Sheets berekent hier niks meer, Python doet de 7D avg!)
+                # We sturen de platte data naar de sheet
                 nieuwe_metric_rij = [datum_str, m_gew if m_gew > 0 else "", m_vet if m_vet > 0 else "", 
                                      m_water if m_water > 0 else "", m_spier if m_spier > 0 else "", 
                                      m_bot if m_bot > 0 else "", "", "", "", "", "", ""]
@@ -290,5 +278,19 @@ with tab2:
                 st.cache_data.clear()
                 st.rerun()
                 
+        st.divider()
+          
+        # Laatste Gemiddeldes tonen (Nu perfect uitgelijnd ná het formulier!)
+        if not df_metrics.empty:
+            laatste_gew = df_metrics['7D Gem. Gewicht'].iloc[0]
+            laatste_vet = df_metrics['7D Gem. Vet %'].iloc[0]
+            st.success(f"⚖️ **Huidig 7-Dagen Gemiddelde:** {laatste_gew:.1f} kg | {laatste_vet:.1f}% Vet")
+            
+            # Korte Historie
+            st.markdown("### 📊 Historie")
+            toon_metrics = df_metrics[['Datum', 'Gewicht (kg)', 'Vet %', '7D Gem. Gewicht']].head(5)
+            toon_metrics['Datum'] = toon_metrics['Datum'].dt.strftime('%d-%m-%y')
+            st.dataframe(toon_metrics, hide_index=True, use_container_width=True)
+            
     except Exception as e:
         st.error(f"Nog geen Metrics data gevonden of een fout opgetreden. {e}")
