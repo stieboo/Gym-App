@@ -21,6 +21,30 @@ def bereken_target_gewicht(huidige_e1rm, target_reps, rpe_target=8):
 # --- PAGINA INSTELLINGEN ---
 st.set_page_config(page_title="Gym AI", page_icon="🦍", layout="centered")
 
+# --- SECURITY: INLOGSCHERM ---
+def check_password():
+    """Geeft True terug als de gebruiker het juiste wachtwoord heeft ingevuld."""
+    # We slaan een sessie-wachtwoord op zodat je niet bij elke klik hoeft in te loggen
+    if "password_correct" not in st.session_state:
+        st.session_state["password_correct"] = False
+
+    if not st.session_state["password_correct"]:
+        st.markdown("### 🔒 Log in om de Gym AI te gebruiken")
+        wachtwoord = st.text_input("Wachtwoord", type="password")
+        if st.button("Log In"):
+            # HET WACHTWOORD IS HIER: 'gorilla2026' (Verander dit naar wat je wilt!)
+            if wachtwoord == "gorilla2026": 
+                st.session_state["password_correct"] = True
+                st.rerun()
+            else:
+                st.error("Incorrect wachtwoord.")
+        return False
+    return True
+
+# Stop het script als het wachtwoord nog niet klopt!
+if not check_password():
+    st.stop()
+
 # --- DATABASE CONNECTIE FUNCTIES ---
 def connect_to_sheet(sheet_naam):
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
