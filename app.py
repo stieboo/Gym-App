@@ -101,11 +101,15 @@ def color_rpe(val):
 
 # --- APP INTERFACE ---
 colA, colB = st.columns([1, 4])
-with colA:
-    # Zorg dat de naam hier klopt (jpg of png)
-    st.image("logo.jpg", width=60)
-with colB:
-    st.title("Gym AI")
+        with colA:
+            # Vangnet: Probeer het plaatje te laden. Lukt het niet? Toon een emoji en crash NIET.
+            try:
+                # LET OP: Verander "logo.jpg" hieronder naar de EXACTE naam op je GitHub!
+                st.image("logo.png", width=60) 
+            except:
+                st.markdown("<h1>🦍</h1>", unsafe_allow_html=True)
+        with colB:
+            st.title("Gym AI")
 
 # PR Feestje Check!
 if 'pr_feestje' in st.session_state and st.session_state.pr_feestje:
