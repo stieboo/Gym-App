@@ -121,8 +121,6 @@ def get_oefeningen_lijst():
 with tab1:
     try:
         df_log = get_log_data()
-        
-        # FIX 1: Haal AL je oefeningen op uit de master-lijst (niet meer uit geschiedenis)
         oefeningen_lijst = get_oefeningen_lijst()
         
         # -- LIVE VANDAAG TRACKER --
@@ -136,27 +134,42 @@ with tab1:
         
         st.divider()
         
-        # FIX 2: Het "Oefening Geheugen" aanmaken
-        if 'gekozen_oefening' not in st.session_state:
-            st.session_state['gekozen_oefening'] = None
-
-        # Bepaal welke oefening standaard geselecteerd moet zijn in de lijst
-        default_idx = None
-        if st.session_state['gekozen_oefening'] in oefeningen_lijst:
-            default_idx = oefeningen_lijst.index(st.session_state['gekozen_oefening'])
-
-        # -- OEFENING SELECTIE (SEARCHABLE + MEMORY) --
+        # -- ZERO FRICTION: SPLIT FILTER --
         st.subheader("Wat ga je doen?")
+        
+        # Horizontale knoppen om je spiergroep-split te kiezen!
+        split_keuze = st.radio("Filter je schema:", ["Alles", "Upper", "Lower"], horizontal=True, label_visibility="collapsed")
+
+        # Filter de lijst op basis van de knop
+        if split_keuze == "Alles":
+            gefilterde_lijst = oefeningen_lijst
+        else:
+            gefilterde_lijst = [oef for oef in oefeningen_lijst if split_keuze in oef]
+        
+        # -- ZERO FRICTION: GEHEUGEN AANMAKEN --
+        if 'gekozen_oefening' not in st.session_state: st.session_state['gekozen_oefening'] = None
+        if 'laatste_gew' not in st.session_state: st.session_state['laatste_gew'] = None
+        if 'laatste_reps' not in st.session_state: st.session_state['laatste_reps'] = None
+
+        # Bepaal welke oefening standaard geselecteerd moet zijn
+        default_idx = None
+        if st.session_state['gekozen_oefening'] in gefilterde_lijst:
+            default_idx = gefilterde_lijst.index(st.session_state['gekozen_oefening'])
+
+        # De daadwerkelijke zoekbalk
         huidige_keuze = st.selectbox(
             "Kies je Oefening (Typ om te zoeken):", 
-            oefeningen_lijst, 
+            gefilterde_lijst, 
             index=default_idx, 
             placeholder="Typ een oefening..."
         )
         
-        # Update het geheugen als de gebruiker iets nieuws kiest
-        st.session_state['gekozen_oefening'] = huidige_keuze
-        
+        # Als je een NIEUWE oefening kiest, resetten we de opgeslagen gewichten!
+        if st.session_state['gekozen_oefening'] != huidige_keuze:
+            st.session_state['gekozen_oefening'] = huidige_keuze
+            st.session_state['laatste_gew'] = None
+            st.session_state['laatste_reps'] = None
+            
         gekozen_oefening = st.session_state['gekozen_oefening']
         
         # -- GEAVANCEERDE OPTIES (DELOAD) --
@@ -174,44 +187,43 @@ with tab1:
 
             if pd.notna(vorig_e1rm) and vorig_e1rm > 0:
                 if is_deload:
-                    # Deload: 80% van vorig e1RM, mikken op RPE 7
                     target_8 = bereken_target_gewicht(vorig_e1rm * 0.80, target_reps=8, rpe_target=7)
                     target_10 = bereken_target_gewicht(vorig_e1rm * 0.80, target_reps=10, rpe_target=7)
                     st.info(f"🧘‍♂️ **Deload Doel (RPE 7):**\nPak **{target_8} kg** voor 8 reps\n*óf* **{target_10} kg** voor 10 reps.")
                 else:
-                    # Normale Overload: RPE 8.5
                     target_8 = bereken_target_gewicht(vorig_e1rm, target_reps=8, rpe_target=8.5)
                     target_10 = bereken_target_gewicht(vorig_e1rm, target_reps=10, rpe_target=8.5)
                     st.success(f"🎯 **Jouw Overload Doel (RPE 8.5):**\nPak **{target_8} kg** voor 8 reps\n*óf* **{target_10} kg** voor 10 reps.")
             
             st.info(f"🏆 **All-Time PR (e1RM):** {pr:.1f} kg")
             
-            # -- LOG NIEUWE SET (BOVENAAN) --
+            # -- LOG NIEUWE SET (MET AUTO-FILL) --
             st.markdown("### 📝 Log Nieuwe Set")
             with st.form("log_form", clear_on_submit=True):
                 col1, col2 = st.columns(2)
                 with col1:
-                    # Gewicht accepteert decimalen (zoals 12.5), dus iOS zal vaak het "getallen + leestekens" bordje tonen.
-                    input_gewicht = st.number_input("Gewicht (kg)", min_value=0.0, step=2.5, format="%f", value=None, placeholder="bijv. 80.5")
+                    # Hij pakt nu automatisch het gewicht van je vorige set uit het geheugen!
+                    input_gewicht = st.number_input("Gewicht (kg)", min_value=0.0, step=2.5, format="%f", value=st.session_state['laatste_gew'], placeholder="bijv. 80.5")
                 with col2:
-                    # Omdat step 1 is (een Int), forceert dit op veel mobiele browsers het NumPad!
-                    input_reps = st.number_input("Reps", min_value=0, step=1, value=None, placeholder="bijv. 8")
+                    # Idem voor reps
+                    input_reps = st.number_input("Reps", min_value=0, step=1, value=st.session_state['laatste_reps'], placeholder="bijv. 8")
                     
                 input_rpe = st.selectbox("RPE", ["-", 6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10], index=7)
                 input_notities = st.text_input("Notities")
                 submit_button = st.form_submit_button("💾 Sla Set Op", use_container_width=True)
                 
                 if submit_button:
-                    # Check of de velden wel zijn ingevuld!
                     if input_gewicht is None or input_reps is None:
                         st.error("Vul a.u.b. het gewicht én de reps in!")
                     else:
-                        # Voeg automatische Deload tag toe aan notities
+                        # ZERO FRICTION: Sla deze set op in het geheugen voor je volgende set!
+                        st.session_state['laatste_gew'] = float(input_gewicht)
+                        st.session_state['laatste_reps'] = int(input_reps)
+                        
                         final_notes = input_notities
                         if is_deload:
                             final_notes = "[DELOAD] " + input_notities
                             
-                        # RPE & PR Berekening 
                         if input_rpe != "-" and not is_deload: 
                             rpe_float = float(input_rpe)
                             if rpe_float >= 8:
