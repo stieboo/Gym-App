@@ -259,42 +259,62 @@ with tab2:
             
             col1, col2 = st.columns(2)
             with col1:
-                m_gew = st.number_input("Gewicht (kg)", min_value=0.0, step=0.1, format="%.1f")
-                m_vet = st.number_input("Vet %", min_value=0.0, step=0.1, format="%.1f")
+                # value=None voor lege, schone startvakjes! format="%f" voor betere mobiele numpad herkenning
+                m_gew = st.number_input("Gewicht (kg)", min_value=0.0, step=0.1, format="%f", value=None, placeholder="bijv. 83.5")
+                m_vet = st.number_input("Vet %", min_value=0.0, step=0.1, format="%f", value=None, placeholder="bijv. 18.2")
             with col2:
-                m_water = st.number_input("Water %", min_value=0.0, step=0.1, format="%.1f")
-                m_spier = st.number_input("Spier %", min_value=0.0, step=0.1, format="%.1f")
+                m_water = st.number_input("Water %", min_value=0.0, step=0.1, format="%f", value=None)
+                m_spier = st.number_input("Spier %", min_value=0.0, step=0.1, format="%f", value=None)
                 
-            m_bot = st.number_input("Botmassa (kg)", min_value=0.0, step=0.1, format="%.1f")
+            m_bot = st.number_input("Botmassa (kg)", min_value=0.0, step=0.1, format="%f", value=None)
+            
+            # Nieuw: Notities veld voor alcohol, zout, slecht geslapen etc.
+            m_notities = st.text_input("Notities", value="", placeholder="Gedronken, slecht geslapen, ziek...")
             
             submit_metrics = st.form_submit_button("💾 Sla Weging Op", use_container_width=True)
             
             if submit_metrics:
-                # Datum formatten
-                datum_str = m_datum.strftime("%d-%m-%Y")
-                
-                # We sturen de platte data naar de sheet
-                nieuwe_metric_rij = [datum_str, m_gew if m_gew > 0 else "", m_vet if m_vet > 0 else "", 
-                                     m_water if m_water > 0 else "", m_spier if m_spier > 0 else "", 
-                                     m_bot if m_bot > 0 else "", "", "", "", "", "", ""]
-                
-                sheet_m = connect_to_sheet("METRICS_DATA")
-                sheet_m.append_row(nieuwe_metric_rij, value_input_option="USER_ENTERED")
-                
-                st.cache_data.clear()
-                st.rerun()
+                if m_gew is None:
+                    st.error("Vul minimaal je gewicht in!")
+                else:
+                    datum_str = m_datum.strftime("%d-%m-%Y")
+                    
+                    # Fix: Als je de optionele vakjes leeg laat, maken we er een lege string van voor Sheets
+                    val_gew = m_gew if m_gew is not None else ""
+                    val_vet = m_vet if m_vet is not None else ""
+                    val_water = m_water if m_water is not None else ""
+                    val_spier = m_spier if m_spier is not None else ""
+                    val_bot = m_bot if m_bot is not None else ""
+                    
+                    # Datum (A), Gew (B), Vet (C), Water (D), Spier (E), Bot (F), Notities (G)
+                    nieuwe_metric_rij = [datum_str, val_gew, val_vet, val_water, val_spier, val_bot, m_notities]
+                    
+                    sheet_m = connect_to_sheet("METRICS_DATA")
+                    sheet_m.append_row(nieuwe_metric_rij, value_input_option="USER_ENTERED")
+                    
+                    st.cache_data.clear()
+                    st.rerun()
                 
         st.divider()
           
-        # Laatste Gemiddeldes tonen (Nu perfect uitgelijnd ná het formulier!)
+        # Laatste Gemiddeldes tonen
         if not df_metrics.empty:
-            laatste_gew = df_metrics['7D Gem. Gewicht'].iloc[0]
-            laatste_vet = df_metrics['7D Gem. Vet %'].iloc[0]
-            st.success(f"⚖️ **Huidig 7-Dagen Gemiddelde:** {laatste_gew:.1f} kg | {laatste_vet:.1f}% Vet")
+            # We checken veilig of het 7D gemiddelde bestaat
+            if '7D Gem. Gewicht' in df_metrics.columns and pd.notna(df_metrics['7D Gem. Gewicht'].iloc[0]):
+                laatste_gew = df_metrics['7D Gem. Gewicht'].iloc[0]
+                st.success(f"⚖️ **Huidig 7-Dagen Gem. Gewicht:** {laatste_gew:.1f} kg")
             
             # Korte Historie
             st.markdown("### 📊 Historie")
-            toon_metrics = df_metrics[['Datum', 'Gewicht (kg)', 'Vet %', '7D Gem. Gewicht']].head(5)
+            
+            # We tonen alleen de belangrijkste kolommen in de app, inclusief Notities als die er is!
+            toon_kolommen = ['Datum', 'Gewicht (kg)', 'Vet %']
+            if 'Notities' in df_metrics.columns:
+                toon_kolommen.append('Notities')
+            
+            toon_kolommen = [c for c in toon_kolommen if c in df_metrics.columns]
+            
+            toon_metrics = df_metrics[toon_kolommen].head(5)
             toon_metrics['Datum'] = toon_metrics['Datum'].dt.strftime('%d-%m-%y')
             st.dataframe(toon_metrics, hide_index=True, use_container_width=True)
             
