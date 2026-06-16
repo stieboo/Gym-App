@@ -165,9 +165,10 @@ with tab1:
             with st.form("log_form", clear_on_submit=True):
                 col1, col2 = st.columns(2)
                 with col1:
-                    # value=None zorgt dat hij blanco start!
-                    input_gewicht = st.number_input("Gewicht (kg)", min_value=0.0, step=2.5, format="%.2f", value=None, placeholder="bijv. 80")
+                    # Gewicht accepteert decimalen (zoals 12.5), dus iOS zal vaak het "getallen + leestekens" bordje tonen.
+                    input_gewicht = st.number_input("Gewicht (kg)", min_value=0.0, step=2.5, format="%f", value=None, placeholder="bijv. 80.5")
                 with col2:
+                    # Omdat step 1 is (een Int), forceert dit op veel mobiele browsers het NumPad!
                     input_reps = st.number_input("Reps", min_value=0, step=1, value=None, placeholder="bijv. 8")
                     
                 input_rpe = st.selectbox("RPE", ["-", 6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10], index=7)
