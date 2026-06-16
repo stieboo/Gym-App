@@ -110,13 +110,20 @@ if 'pr_feestje' in st.session_state and st.session_state.pr_feestje:
 # TABBLADEN AANMAKEN
 tab1, tab2 = st.tabs(["🏋️‍♂️ Training", "⚖️ Body Metrics"])
 
+@st.cache_data(ttl=60)
+def get_oefeningen_lijst():
+    sheet = connect_to_sheet("OEFENINGEN_LST")
+    return sheet.col_values(1)[1:] # Haalt kolom A op, skipt de titel in rij 1
+
 # ==========================================
 # TAB 1: TRAINING
 # ==========================================
 with tab1:
     try:
         df_log = get_log_data()
-        oefeningen_lijst = df_log['Oefening'].dropna().unique()
+        
+        # FIX 1: Haal AL je oefeningen op uit de master-lijst (niet meer uit geschiedenis)
+        oefeningen_lijst = get_oefeningen_lijst()
         
         # -- LIVE VANDAAG TRACKER --
         vandaag_datum = datetime.now().strftime('%d-%m-%Y')
@@ -129,9 +136,28 @@ with tab1:
         
         st.divider()
         
-        # -- OEFENING SELECTIE (SEARCHABLE) --
+        # FIX 2: Het "Oefening Geheugen" aanmaken
+        if 'gekozen_oefening' not in st.session_state:
+            st.session_state['gekozen_oefening'] = None
+
+        # Bepaal welke oefening standaard geselecteerd moet zijn in de lijst
+        default_idx = None
+        if st.session_state['gekozen_oefening'] in oefeningen_lijst:
+            default_idx = oefeningen_lijst.index(st.session_state['gekozen_oefening'])
+
+        # -- OEFENING SELECTIE (SEARCHABLE + MEMORY) --
         st.subheader("Wat ga je doen?")
-        gekozen_oefening = st.selectbox("Kies je Oefening (Typ om te zoeken):", oefeningen_lijst, index=None, placeholder="Typ een oefening...")
+        huidige_keuze = st.selectbox(
+            "Kies je Oefening (Typ om te zoeken):", 
+            oefeningen_lijst, 
+            index=default_idx, 
+            placeholder="Typ een oefening..."
+        )
+        
+        # Update het geheugen als de gebruiker iets nieuws kiest
+        st.session_state['gekozen_oefening'] = huidige_keuze
+        
+        gekozen_oefening = st.session_state['gekozen_oefening']
         
         # -- GEAVANCEERDE OPTIES (DELOAD) --
         is_deload = False
