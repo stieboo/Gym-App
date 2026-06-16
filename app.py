@@ -100,7 +100,12 @@ def color_rpe(val):
         return ''
 
 # --- APP INTERFACE ---
-st.title("🦍 Gym AI")
+colA, colB = st.columns([1, 4])
+with colA:
+    # Zorg dat de naam hier klopt (jpg of png)
+    st.image("logo.jpg", width=60)
+with colB:
+    st.title("Gym AI")
 
 # PR Feestje Check!
 if 'pr_feestje' in st.session_state and st.session_state.pr_feestje:
@@ -181,42 +186,58 @@ with tab1:
             df_oefening = df_log[df_log['Oefening'] == gekozen_oefening]
             pr = df_oefening['e1RM'].max()
             
+            # --- SIDE QUEST 2: COMPOUND CHECK ---
+            sheet_oefeningen = connect_to_sheet("OEFENINGEN_LST")
+            df_oef_lijst = pd.DataFrame(sheet_oefeningen.get_all_records())
+            
+            is_compound = True # Standaard aan voor de zekerheid
+            if not df_oef_lijst.empty and 'Compound' in df_oef_lijst.columns:
+                match = df_oef_lijst[df_oef_lijst['Oefening'] == gekozen_oefening]
+                if not match.empty:
+                    val = str(match['Compound'].values[0]).strip().upper()
+                    # Zowel de Engelse als Nederlandse Sheets uitvoer checken
+                    if val == 'FALSE' or val == 'ONWAAR':
+                        is_compound = False
+
             # -- AI COACH (TARGET GENERATOR) --
             laatste_datum = df_oefening['Datum'].max()
             vorig_e1rm = df_oefening[df_oefening['Datum'].dt.date == laatste_datum.date()]['e1RM'].max()
 
-            if pd.notna(vorig_e1rm) and vorig_e1rm > 0:
-                if is_deload:
-                    target_8 = bereken_target_gewicht(vorig_e1rm * 0.80, target_reps=8, rpe_target=7)
-                    target_10 = bereken_target_gewicht(vorig_e1rm * 0.80, target_reps=10, rpe_target=7)
-                    st.info(f"🧘‍♂️ **Deload Doel (RPE 7):**\nPak **{target_8} kg** voor 8 reps\n*óf* **{target_10} kg** voor 10 reps.")
-                else:
-                    target_8 = bereken_target_gewicht(vorig_e1rm, target_reps=8, rpe_target=8.5)
-                    target_10 = bereken_target_gewicht(vorig_e1rm, target_reps=10, rpe_target=8.5)
-                    st.success(f"🎯 **Jouw Overload Doel (RPE 8.5):**\nPak **{target_8} kg** voor 8 reps\n*óf* **{target_10} kg** voor 10 reps.")
-            
-            st.info(f"🏆 **All-Time PR (e1RM):** {pr:.1f} kg")
+            # Laat targets en PR alleen zien als het een Compound is!
+            if is_compound:
+                if pd.notna(vorig_e1rm) and vorig_e1rm > 0:
+                    if is_deload:
+                        target_8 = bereken_target_gewicht(vorig_e1rm * 0.80, target_reps=8, rpe_target=7)
+                        target_10 = bereken_target_gewicht(vorig_e1rm * 0.80, target_reps=10, rpe_target=7)
+                        # SIDE QUEST 3: st.success veranderd naar st.info voor de blauwe vibe
+                        st.info(f"🧘‍♂️ **Deload Doel (RPE 7):**\nPak **{target_8} kg** voor 8 reps\n*óf* **{target_10} kg** voor 10 reps.")
+                    else:
+                        target_8 = bereken_target_gewicht(vorig_e1rm, target_reps=8, rpe_target=8.5)
+                        target_10 = bereken_target_gewicht(vorig_e1rm, target_reps=10, rpe_target=8.5)
+                        st.info(f"🎯 **Overload Target (RPE 8.5):**\nPak **{target_8} kg** voor 8 reps\n*óf* **{target_10} kg** voor 10 reps.")
+                
+                st.info(f"🏆 **All-Time PR (e1RM):** {pr:.1f} kg")
+            else:
+                # Isolatie oefeningen krijgen deze simpele blauwe balk
+                st.info("💡 **Isolatie Oefening:** Focus op perfecte contractie (pomp). Geen 1RM targets nodig.")
             
             # -- LOG NIEUWE SET (MET AUTO-FILL) --
             st.markdown("### 📝 Log Nieuwe Set")
             with st.form("log_form", clear_on_submit=True):
                 col1, col2 = st.columns(2)
                 with col1:
-                    # Hij pakt nu automatisch het gewicht van je vorige set uit het geheugen!
                     input_gewicht = st.number_input("Gewicht (kg)", min_value=0.0, step=2.5, format="%f", value=st.session_state['laatste_gew'], placeholder="bijv. 80.5")
                 with col2:
-                    # Idem voor reps
                     input_reps = st.number_input("Reps", min_value=0, step=1, value=st.session_state['laatste_reps'], placeholder="bijv. 8")
                     
                 input_rpe = st.selectbox("RPE", ["-", 6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10], index=7)
-                input_notities = st.text_input("Notities")
+                input_notities = st.text_input("Notities", value="", placeholder="Optioneel...")
                 submit_button = st.form_submit_button("💾 Sla Set Op", use_container_width=True)
                 
                 if submit_button:
                     if input_gewicht is None or input_reps is None:
                         st.error("Vul a.u.b. het gewicht én de reps in!")
                     else:
-                        # ZERO FRICTION: Sla deze set op in het geheugen voor je volgende set!
                         st.session_state['laatste_gew'] = float(input_gewicht)
                         st.session_state['laatste_reps'] = int(input_reps)
                         
@@ -228,7 +249,8 @@ with tab1:
                             rpe_float = float(input_rpe)
                             if rpe_float >= 8:
                                 nieuwe_e1rm = input_gewicht * (1 + (input_reps + (10 - rpe_float)) / 30)
-                                if pd.notna(pr) and pr > 0 and nieuwe_e1rm > pr:
+                                # PR Ballonnen afsteken? Alleen als het een compound is!
+                                if is_compound and pd.notna(pr) and pr > 0 and nieuwe_e1rm > pr:
                                     st.session_state.pr_feestje = True
                         
                         nu = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
@@ -259,7 +281,7 @@ with tab1:
             
             st.divider()
 
-            # -- VORIGE KEER (HEATMAP) (MAX 5 SETS) --
+            # -- VORIGE KEER (HEATMAP) --
             st.markdown("### 🕒 Laatste 5 Sets")
             display_df = df_oefening[['Datum', 'Gewicht', 'Reps', 'RPE', 'Notities']].head(5)
             display_df['Datum'] = display_df['Datum'].dt.strftime('%d-%m-%y')
@@ -267,23 +289,25 @@ with tab1:
             st.dataframe(styled_df, hide_index=True, use_container_width=True)
             
             # -- KRACHT PROGRESSIE (TRENDLIJN) --
-            st.markdown("### 📈 Kracht Progressie (e1RM)")
-            df_oefening['Datum_Puur'] = df_oefening['Datum'].dt.date
-            kracht_df = df_oefening[df_oefening['e1RM'] > 0].groupby('Datum_Puur')['e1RM'].max().reset_index()
-            kracht_df = kracht_df.sort_values(by='Datum_Puur', ascending=True)
-            
-            if not kracht_df.empty and len(kracht_df) > 1:
-                fig = px.line(kracht_df, x='Datum_Puur', y='e1RM', markers=True)
-                fig.update_traces(line_shape='spline', line=dict(color='#00d26a', width=3), marker=dict(size=8))
-                fig.update_layout(xaxis_title=None, yaxis_title="kg", margin=dict(l=0, r=0, t=10, b=0), height=250, dragmode=False, hovermode="x")
-                fig.update_xaxes(tickformat="%d-%m")
-                st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-            else:
-                st.caption("Nog niet genoeg werksets gelogd voor een trendlijn.")
+            # Trendlijn tonen we ook alleen bij Compounds! Bij isolatie trekt het toch op niks.
+            if is_compound:
+                st.markdown("### 📈 Kracht Progressie (e1RM)")
+                df_oefening['Datum_Puur'] = df_oefening['Datum'].dt.date
+                kracht_df = df_oefening[df_oefening['e1RM'] > 0].groupby('Datum_Puur')['e1RM'].max().reset_index()
+                kracht_df = kracht_df.sort_values(by='Datum_Puur', ascending=True)
+                
+                if not kracht_df.empty and len(kracht_df) > 1:
+                    fig = px.line(kracht_df, x='Datum_Puur', y='e1RM', markers=True)
+                    fig.update_traces(line_shape='spline', line=dict(color='#A5B4FC', width=3), marker=dict(size=8)) # Lijnkleur is nu strak Vercel Blauw!
+                    fig.update_layout(xaxis_title=None, yaxis_title="kg", margin=dict(l=0, r=0, t=10, b=0), height=250, dragmode=False, hovermode="x")
+                    fig.update_xaxes(tickformat="%d-%m")
+                    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+                else:
+                    st.caption("Nog niet genoeg werksets gelogd voor een trendlijn.")
 
     except Exception as e:
         st.error(f"Fout in Training Tab: {e}")
-
+        
 # ==========================================
 # TAB 2: BODY METRICS
 # ==========================================
