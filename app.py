@@ -165,37 +165,42 @@ with tab1:
             with st.form("log_form", clear_on_submit=True):
                 col1, col2 = st.columns(2)
                 with col1:
-                    input_gewicht = st.number_input("Gewicht (kg)", min_value=0.0, step=2.5, format="%.2f")
+                    # value=None zorgt dat hij blanco start!
+                    input_gewicht = st.number_input("Gewicht (kg)", min_value=0.0, step=2.5, format="%.2f", value=None, placeholder="bijv. 80")
                 with col2:
-                    input_reps = st.number_input("Reps", min_value=0, step=1)
+                    input_reps = st.number_input("Reps", min_value=0, step=1, value=None, placeholder="bijv. 8")
                     
                 input_rpe = st.selectbox("RPE", ["-", 6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10], index=7)
                 input_notities = st.text_input("Notities")
                 submit_button = st.form_submit_button("💾 Sla Set Op", use_container_width=True)
                 
                 if submit_button:
-                    # Voeg automatische Deload tag toe aan notities
-                    final_notes = input_notities
-                    if is_deload:
-                        final_notes = "[DELOAD] " + input_notities
+                    # Check of de velden wel zijn ingevuld!
+                    if input_gewicht is None or input_reps is None:
+                        st.error("Vul a.u.b. het gewicht én de reps in!")
+                    else:
+                        # Voeg automatische Deload tag toe aan notities
+                        final_notes = input_notities
+                        if is_deload:
+                            final_notes = "[DELOAD] " + input_notities
+                            
+                        # RPE & PR Berekening 
+                        if input_rpe != "-" and not is_deload: 
+                            rpe_float = float(input_rpe)
+                            if rpe_float >= 8:
+                                nieuwe_e1rm = input_gewicht * (1 + (input_reps + (10 - rpe_float)) / 30)
+                                if pd.notna(pr) and pr > 0 and nieuwe_e1rm > pr:
+                                    st.session_state.pr_feestje = True
                         
-                    # RPE & PR Berekening (Geen PR's vieren in een deload!)
-                    if input_rpe != "-" and not is_deload: 
-                        rpe_float = float(input_rpe)
-                        if rpe_float >= 8:
-                            nieuwe_e1rm = input_gewicht * (1 + (input_reps + (10 - rpe_float)) / 30)
-                            if pd.notna(pr) and pr > 0 and nieuwe_e1rm > pr:
-                                st.session_state.pr_feestje = True
-                    
-                    nu = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
-                    rpe_str = input_rpe if input_rpe != "-" else ""
-                    
-                    nieuwe_rij = [nu, gekozen_oefening, input_gewicht, input_reps, rpe_str, final_notes]
-                    sheet = connect_to_sheet("LOG_DATA")
-                    sheet.append_row(nieuwe_rij, value_input_option="USER_ENTERED")
-                    
-                    st.cache_data.clear()
-                    st.rerun()
+                        nu = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+                        rpe_str = input_rpe if input_rpe != "-" else ""
+                        
+                        nieuwe_rij = [nu, gekozen_oefening, float(input_gewicht), int(input_reps), rpe_str, final_notes]
+                        sheet = connect_to_sheet("LOG_DATA")
+                        sheet.append_row(nieuwe_rij, value_input_option="USER_ENTERED")
+                        
+                        st.cache_data.clear()
+                        st.rerun()
 
             # -- UNDO KNOP --
             if not df_log.empty:
