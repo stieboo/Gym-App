@@ -48,6 +48,13 @@ Om het "Garbage In, Garbage Out" principe tegen te gaan, hanteert de applicatie 
 - [ ] **Rate of Gain KPI-Stoplicht:** Visuele indicator op het dashboard die berekent of de bulk-snelheid (gewichtstoename per week op basis van de 7-day moving average) binnen de fysiologische 'sweet spot' ligt (+0.25% tot +0.5% van het lichaamsgewicht).
 - [ ] **Database Migratie:** Overstap van Google Sheets naar een relationele PostgreSQL cloud-database (Supabase) ter voorbereiding op multi-user schaalbaarheid en complexere SQL-queries.
 
+- [ ] - [ ] 📝 Toevoeging Roadmap Notes (Fase 3 - Visualisatie Logica)
+[UX/Anatomische Realisatie - Juni 2026]
+
+Probleem: De rug is biomechanisch opgesplitst in Lats en Boven Rug voor loepzuivere data. Dit gaat er gegarandeerd voor zorgen dat het absolute volume per categorie lager uitvalt dan bij Borst (wat als één grote groep wordt gelogd). Hierdoor trekt de Plotly Spider/Radar Chart visueel scheef, wat onterecht een spierdisbalans suggereert.
+
+Oplossing voor de StatsEngine: Ga in de code niet blind absolute sets vergelijken op de radar. Implementeer in Fase 3 ofwel een Relatieve Schaling (volume afzetten tegen fysiologische targets per sub-spiergroep), ofwel een Aggregatie-Bypass waarbij Lats + Boven Rug voor de radar-chart tijdelijk worden samengevoegd tot de hoofdgroep Rug (Totaal). De ruwe, opgesplitste data in de database blijft intact.
+
 ---
 
 ## 🧠 Phase 4: Machine Learning & God-Mode (PLANNED: Lange termijn)
@@ -58,3 +65,4 @@ Om het "Garbage In, Garbage Out" principe tegen te gaan, hanteert de applicatie 
 - [ ] **OpenAI / ChatGPT Integratie:** Automatische wekelijkse evaluatie waarbij de gpt-4o API de database en *Trainingsnotities* leest voor kwalitatief periodisatie-advies en het spotten van verborgen correlaties (bijv. slaaptekort vs. prestatieverlies op specifieke lifts).
 - [ ] **Macro-Cycle Export:** Generatie van een strak vormgegeven PDF-rapportage na afronding van een trainingsblok via Python ReportLab.
 - [ ] **API Federatie (Herstel):** Koppeling met Apple Health / Oura Ring data (Slaap / HRV) om live dag-targets automatisch aan te passen op basis van neurologische fitheid.
+
